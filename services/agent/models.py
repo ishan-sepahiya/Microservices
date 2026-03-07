@@ -108,8 +108,4 @@ class InstructRequest(BaseModel):
 class InstructResponse(BaseModel):
     reply: str
     actions_taken: list[str] = []
-=======
-# This file was already built — the content is in the chat above.
-# It contains RegisteredService ORM model + ServiceInstruction + all Pydantic schemas.
-# Re-create from the "Agent registry models" file shown earlier in this session.
->>>>>>> 7800837eda66de719ee35f3ae09b33c90f6d1ac4
+
