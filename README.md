@@ -13,6 +13,7 @@ platform/
 │
 ├── services/
 │   └── agent/                  ← THE PRODUCT (teammates build internals)
+<<<<<<< HEAD
 │       ├── main.py             ← ✅ app factory (wire your routers here)
 │       ├── config.py           ← ✅ settings
 │       ├── database.py         ← ✅ async SQLAlchemy
@@ -21,6 +22,16 @@ platform/
 │       ├── registry/
 │       │   └── models.py       ← ✅ RegisteredService ORM + schemas
 │       └── TEAMMATES.md        ← ✅ guide for building agent internals
+=======
+│       ├── main.py             ← app factory (wire your routers here)
+│       ├── config.py           ← settings
+│       ├── database.py         ← async SQLAlchemy
+│       ├── control_api/
+│       │   └── routes.py       ← /control/register + /heartbeat + /services
+│       ├── registry/
+│       │   └── models.py       ← RegisteredService ORM + schemas
+│       └── TEAMMATES.md        ← guide for building agent internals
+>>>>>>> 7800837eda66de719ee35f3ae09b33c90f6d1ac4
 │
 ├── rest/                       ← Sample REST microservices
 │   ├── gateway/                ← :8010 — public entry point
