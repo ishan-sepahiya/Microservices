@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from database import engine
 from routes import router
+from otel_middleware import setup_otel
 
 logger = logging.getLogger("chat")
 
@@ -32,6 +33,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(title="Chat Service", version="1.0.0", lifespan=lifespan,
               docs_url="/docs" if settings.debug else None)
+setup_otel(app, service_name="chat-service")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.include_router(router)
 

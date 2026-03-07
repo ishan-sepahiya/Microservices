@@ -3,23 +3,30 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file="../../.env", case_sensitive=False
-    )
+    model_config = SettingsConfigDict(env_file="../../.env", case_sensitive=False)
 
     database_url: str
     secret_key: str
     algorithm: str = "HS256"
     debug: bool = False
 
-    # Internal API key — services must send this to register
     agent_api_key: str = "change-me-agent-internal-key"
 
-    # AI provider (teammates fill this in)
-    ai_provider: str = "openai"          # openai | anthropic | ollama
-    openai_api_key: str = ""
-    anthropic_api_key: str = ""
-    ollama_base_url: str = "http://ollama:11434"
+    # Downstream service URLs (used by monitoring + debug agent)
+    product_service_url: str = "http://product-service:8001"
+    payment_service_url: str = "http://payment-service:8002"
+    chat_service_url: str    = "http://chat-service:8011"
+    metrics_service_url: str = "http://metrics-service:8012"
+
+    # Ollama LLM
+    ollama_url: str   = "http://ollama:11434/api/generate"
+    ollama_model: str = "mistral"
+
+    # n8n webhooks (optional)
+    n8n_scale_webhook: str    = ""
+    n8n_restart_webhook: str  = ""
+    n8n_rollback_webhook: str = ""
+    n8n_debug_webhook: str    = ""
 
 
 @lru_cache
