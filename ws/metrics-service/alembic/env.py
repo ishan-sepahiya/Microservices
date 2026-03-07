@@ -1,14 +1,17 @@
-import asyncio
+import sys, asyncio
+sys.path.insert(0, "/app")
 from logging.config import fileConfig
 from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
-from config import settings
-from database import Base
-import models  # noqa
 
 config = context.config
 if config.config_file_name:
     fileConfig(config.config_file_name)
+
+from config import settings
+from database import Base
+import models  # noqa
+
 target_metadata = Base.metadata
 
 def do_run_migrations(connection):
