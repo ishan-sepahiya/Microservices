@@ -1,0 +1,124 @@
+networks:
+  platform-net:
+    driver: bridge
+
+x-pg-healthcheck: &pg-healthcheck
+  test: ["CMD-SHELL", "pg_isready -U postgres"]
+  interval: 5s
+  timeout: 5s
+  retries: 10
+
+x-svc-defaults: &svc-defaults
+  env_file: .env
+  networks: [platform-net]
+  restart: unless-stopped
+
+services:
+
+  # ── AGENT ──────────────────────────────────────────────────────────────────
+  agent-db:
+    image: postgres:16-alpine
+    environment: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: changeme, POSTGRES_DB: agent_db}
+    volumes: [agent-db-data:/var/lib/postgresql/data]
+    networks: [platform-net]
+    healthcheck: *pg-healthcheck
+
+  agent:
+    <<: *svc-defaults
+    build: {context: ./services/agent, dockerfile: Dockerfile}
+    expose: ["8020"]
+    environment: {DATABASE_URL: "${AGENT_DATABASE_URL}"}
+    depends_on:
+      agent-db: {condition: service_healthy}
+    command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8020 --reload"
+
+  # ── REST SERVICES ──────────────────────────────────────────────────────────
+  product-db:
+    image: postgres:16-alpine
+    environment: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: changeme, POSTGRES_DB: product_db}
+    volumes: [product-db-data:/var/lib/postgresql/data]
+    networks: [platform-net]
+    healthcheck: *pg-healthcheck
+
+  product-service:
+    <<: *svc-defaults
+    build: {context: ./rest/product-service, dockerfile: Dockerfile}
+    expose: ["8001"]
+    environment: {DATABASE_URL: "${PRODUCT_DATABASE_URL}"}
+    depends_on:
+      product-db: {condition: service_healthy}
+      agent: {condition: service_started}
+    command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8001 --reload"
+
+  payment-db:
+    image: postgres:16-alpine
+    environment: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: changeme, POSTGRES_DB: payment_db}
+    volumes: [payment-db-data:/var/lib/postgresql/data]
+    networks: [platform-net]
+    healthcheck: *pg-healthcheck
+
+  payment-service:
+    <<: *svc-defaults
+    build: {context: ./rest/payment-service, dockerfile: Dockerfile}
+    expose: ["8002"]
+    environment: {DATABASE_URL: "${PAYMENT_DATABASE_URL}"}
+    depends_on:
+      payment-db: {condition: service_healthy}
+      agent: {condition: service_started}
+    command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8002 --reload"
+
+  rest-gateway:
+    <<: *svc-defaults
+    build: {context: ./rest/gateway, dockerfile: Dockerfile}
+    ports: ["8000:8000"]
+    depends_on: [product-service, payment-service]
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ── WEBSOCKET SERVICES ────────────────────────────────────────────────────
+  chat-db:
+    image: postgres:16-alpine
+    environment: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: changeme, POSTGRES_DB: chat_db}
+    volumes: [chat-db-data:/var/lib/postgresql/data]
+    networks: [platform-net]
+    healthcheck: *pg-healthcheck
+
+  chat-service:
+    <<: *svc-defaults
+    build: {context: ./ws/chat-service, dockerfile: Dockerfile}
+    expose: ["8011"]
+    environment: {DATABASE_URL: "${CHAT_DATABASE_URL}"}
+    depends_on:
+      chat-db: {condition: service_healthy}
+      agent: {condition: service_started}
+    command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8011 --reload"
+
+  metrics-db:
+    image: postgres:16-alpine
+    environment: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: changeme, POSTGRES_DB: metrics_db}
+    volumes: [metrics-db-data:/var/lib/postgresql/data]
+    networks: [platform-net]
+    healthcheck: *pg-healthcheck
+
+  metrics-service:
+    <<: *svc-defaults
+    build: {context: ./ws/metrics-service, dockerfile: Dockerfile}
+    expose: ["8012"]
+    environment: {DATABASE_URL: "${METRICS_DATABASE_URL}"}
+    depends_on:
+      metrics-db: {condition: service_healthy}
+      agent: {condition: service_started}
+    command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8012 --reload"
+
+  ws-gateway:
+    <<: *svc-defaults
+    build: {context: ./ws/gateway, dockerfile: Dockerfile}
+    ports: ["9000:9000"]
+    depends_on: [chat-service, metrics-service]
+    command: uvicorn main:app --host 0.0.0.0 --port 9000 --reload
+
+volumes:
+  agent-db-data:
+  product-db-data:
+  payment-db-data:
+  chat-db-data:
+  metrics-db-data:
