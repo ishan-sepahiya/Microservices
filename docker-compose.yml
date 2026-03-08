@@ -1,0 +1,204 @@
+networks:
+  platform-net:
+    driver: bridge
+
+x-pg-health: &pg-health
+  test: ["CMD-SHELL", "pg_isready -U postgres"]
+  interval: 5s
+  timeout: 5s
+  retries: 10
+
+x-svc: &svc
+  env_file: .env
+  networks: [platform-net]
+  restart: unless-stopped
+
+services:
+
+  # ── OpenTelemetry Collector ─────────────────────────────────────────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.96.0
+    <<: *svc
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - "4317:4317"   # OTLP gRPC (services export here)
+      - "4318:4318"   # OTLP HTTP
+      - "8888:8888"   # Prometheus metrics of collector itself
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+
+  # ── Ollama LLM ──────────────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    <<: *svc
+    expose: ["11434"]
+    volumes:
+      - ollama-data:/root/.ollama
+    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 10 && ollama pull mistral && wait"]
+
+  # ── AGENT ───────────────────────────────────────────────────────────────────
+  agent-db:
+    image: postgres:16-alpine
+    environment: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: changeme, POSTGRES_DB: agent_db}
+    volumes: [agent-db-data:/var/lib/postgresql/data]
+    networks: [platform-net]
+    healthcheck: *pg-health
+
+  agent:
+    <<: *svc
+    build: {context: ./services/agent, dockerfile: Dockerfile}
+    expose: ["8020"]
+    environment:
+      DATABASE_URL: ${AGENT_DATABASE_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      # IMPORTANT: CONTROL_API_KEY must match AGENT_API_KEY — used to auth service registrations
+      CONTROL_API_KEY: ${AGENT_API_KEY}
+      PRODUCT_SERVICE_URL: http://product-service:8001
+      PAYMENT_SERVICE_URL: http://payment-service:8002
+      CHAT_SERVICE_URL: http://chat-service:8011
+      METRICS_SERVICE_URL: http://metrics-service:8012
+      OLLAMA_URL: http://ollama:11434/api/generate
+      OTEL_SERVICE_NAME: agent
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      DEBUG: "false"
+    depends_on:
+      agent-db: {condition: service_healthy}
+      otel-collector: {condition: service_started}
+    # Tables are created by main.py lifespan (Base.metadata.create_all)
+    command: uvicorn main:app --host 0.0.0.0 --port 8020
+
+  dashboard:
+    <<: *svc
+    build: {context: ./services/agent, dockerfile: Dockerfile.streamlit}
+    ports: ["8501:8501"]    # ← Streamlit UI public port
+    environment:
+      PRODUCT_SERVICE_URL: http://product-service:8001
+      PAYMENT_SERVICE_URL: http://payment-service:8002
+      CHAT_SERVICE_URL: http://chat-service:8011
+      METRICS_SERVICE_URL: http://metrics-service:8012
+      OLLAMA_URL: http://ollama:11434/api/generate
+    depends_on: [agent, ollama]
+
+  # ── REST SERVICES ───────────────────────────────────────────────────────────
+  product-db:
+    image: postgres:16-alpine
+    environment: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: changeme, POSTGRES_DB: product_db}
+    volumes: [product-db-data:/var/lib/postgresql/data]
+    networks: [platform-net]
+    healthcheck: *pg-health
+
+  product-service:
+    <<: *svc
+    build: {context: ./rest/product-service, dockerfile: Dockerfile}
+    expose: ["8001"]
+    environment:
+      DATABASE_URL: ${PRODUCT_DATABASE_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      AGENT_SERVICE_URL: http://agent:8020
+      AGENT_API_KEY: ${AGENT_API_KEY}
+      OTEL_SERVICE_NAME: product-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on:
+      product-db: {condition: service_healthy}
+      agent: {condition: service_started}
+      otel-collector: {condition: service_started}
+    command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8001"
+
+  payment-db:
+    image: postgres:16-alpine
+    environment: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: changeme, POSTGRES_DB: payment_db}
+    volumes: [payment-db-data:/var/lib/postgresql/data]
+    networks: [platform-net]
+    healthcheck: *pg-health
+
+  payment-service:
+    <<: *svc
+    build: {context: ./rest/payment-service, dockerfile: Dockerfile}
+    expose: ["8002"]
+    environment:
+      DATABASE_URL: ${PAYMENT_DATABASE_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      AGENT_SERVICE_URL: http://agent:8020
+      AGENT_API_KEY: ${AGENT_API_KEY}
+      OTEL_SERVICE_NAME: payment-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on:
+      payment-db: {condition: service_healthy}
+      agent: {condition: service_started}
+      otel-collector: {condition: service_started}
+    command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8002"
+
+  rest-gateway:
+    <<: *svc
+    build: {context: ./rest/gateway, dockerfile: Dockerfile}
+    ports: ["8000:8000"]    # ← REST public port
+    depends_on: [product-service, payment-service]
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+
+  # ── WEBSOCKET SERVICES ──────────────────────────────────────────────────────
+  chat-db:
+    image: postgres:16-alpine
+    environment: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: changeme, POSTGRES_DB: chat_db}
+    volumes: [chat-db-data:/var/lib/postgresql/data]
+    networks: [platform-net]
+    healthcheck: *pg-health
+
+  chat-service:
+    <<: *svc
+    build: {context: ./ws/chat-service, dockerfile: Dockerfile}
+    expose: ["8011"]
+    environment:
+      DATABASE_URL: ${CHAT_DATABASE_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      AGENT_SERVICE_URL: http://agent:8020
+      AGENT_API_KEY: ${AGENT_API_KEY}
+      OTEL_SERVICE_NAME: chat-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on:
+      chat-db: {condition: service_healthy}
+      agent: {condition: service_started}
+      otel-collector: {condition: service_started}
+    command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8011"
+
+  metrics-db:
+    image: postgres:16-alpine
+    environment: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: changeme, POSTGRES_DB: metrics_db}
+    volumes: [metrics-db-data:/var/lib/postgresql/data]
+    networks: [platform-net]
+    healthcheck: *pg-health
+
+  metrics-service:
+    <<: *svc
+    build: {context: ./ws/metrics-service, dockerfile: Dockerfile}
+    expose: ["8012"]
+    environment:
+      DATABASE_URL: ${METRICS_DATABASE_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      AGENT_SERVICE_URL: http://agent:8020
+      AGENT_API_KEY: ${AGENT_API_KEY}
+      # URLs to probe for live metric collection
+      PRODUCT_SERVICE_URL: http://product-service:8001
+      PAYMENT_SERVICE_URL: http://payment-service:8002
+      CHAT_SERVICE_URL: http://chat-service:8011
+      OTEL_SERVICE_NAME: metrics-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on:
+      metrics-db: {condition: service_healthy}
+      agent: {condition: service_started}
+      otel-collector: {condition: service_started}
+    command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8012"
+
+  ws-gateway:
+    <<: *svc
+    build: {context: ./ws/gateway, dockerfile: Dockerfile}
+    ports: ["9000:9000"]    # ← WS public port
+    depends_on: [chat-service, metrics-service]
+    command: uvicorn main:app --host 0.0.0.0 --port 9000
+
+volumes:
+  agent-db-data:
+  product-db-data:
+  payment-db-data:
+  chat-db-data:
+  metrics-db-data:
+  ollama-data:
