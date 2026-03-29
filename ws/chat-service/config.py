@@ -1,8 +1,12 @@
 from functools import lru_cache
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file="../../.env", case_sensitive=False)
+    model_config = SettingsConfigDict(
+        env_file=str(Path(__file__).parent.parent.parent / ".env"),
+        case_sensitive=False
+    )
     database_url: str
     secret_key: str
     algorithm: str = "HS256"

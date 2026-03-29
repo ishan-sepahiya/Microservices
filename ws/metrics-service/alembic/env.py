@@ -1,30 +1,15 @@
-<<<<<<< HEAD
-import sys, asyncio
-sys.path.insert(0, "/app")
-from logging.config import fileConfig
-from alembic import context
-from sqlalchemy.ext.asyncio import create_async_engine
-=======
 import asyncio
 from logging.config import fileConfig
 from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
+
 from config import settings
 from database import Base
 import models  # noqa
->>>>>>> 7800837eda66de719ee35f3ae09b33c90f6d1ac4
 
 config = context.config
 if config.config_file_name:
     fileConfig(config.config_file_name)
-<<<<<<< HEAD
-
-from config import settings
-from database import Base, engine  # Base is always defined in database.py
-import models  # noqa — registers ORM models with Base.metadata
-
-=======
->>>>>>> 7800837eda66de719ee35f3ae09b33c90f6d1ac4
 target_metadata = Base.metadata
 
 def do_run_migrations(connection):

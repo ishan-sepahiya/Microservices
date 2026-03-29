@@ -11,8 +11,8 @@ class Settings(BaseSettings):
 
     # MinIO (S3-compatible storage)
     MINIO_ENDPOINT: str = "localhost:9000"
-    MINIO_ACCESS_KEY: str = "minioadmin"
-    MINIO_SECRET_KEY: str = "minioadmin"
+    MINIO_ACCESS_KEY: str
+    MINIO_SECRET_KEY: str
     MINIO_BUCKET: str = "uploads"
     MINIO_SECURE: bool = False
 
@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 50
 
     # JWT (to validate tokens from user service)
-    SECRET_KEY: str = "super-secret-jwt-key-change-in-production"
+    SECRET_KEY: str
     ALGORITHM: str = "HS256"
 
     # Internal service URLs

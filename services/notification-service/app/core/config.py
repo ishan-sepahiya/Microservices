@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     # SMTP (email)
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
-    SMTP_USER: str = ""
-    SMTP_PASSWORD: str = ""
+    SMTP_USER: str
+    SMTP_PASSWORD: str
     EMAIL_FROM_NAME: str = "SaaS Platform"
 
     # Twilio (SMS)

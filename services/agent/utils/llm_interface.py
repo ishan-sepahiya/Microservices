@@ -1,6 +1,8 @@
-"""utils/llm_interface.py — Ollama (Mistral) calls, sync."""
-import os, json, logging
-import requests
+"""utils/llm_interface.py — Ollama (Mistral) calls"""
+import os
+import json
+import logging
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -10,12 +12,14 @@ OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434/api/generate")
 MODEL = os.getenv("OLLAMA_MODEL", "mistral")
 
 
-def call_llm(prompt: str) -> str:
+async def call_llm(prompt: str) -> str:
+    """Call Ollama LLM asynchronously"""
     try:
-        r = requests.post(OLLAMA_URL, json={"model": MODEL, "prompt": prompt, "stream": False}, timeout=60)
-        r.raise_for_status()
-        return r.json().get("response", "")
-    except requests.exceptions.ConnectionError:
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.post(OLLAMA_URL, json={"model": MODEL, "prompt": prompt, "stream": False})
+            r.raise_for_status()
+            return r.json().get("response", "")
+    except httpx.ConnectError:
         logger.warning("Ollama not reachable, using rule-based fallback")
         return _rule_based(prompt)
     except Exception as e:
@@ -34,15 +38,16 @@ def _rule_based(prompt: str) -> str:
     return json.dumps([{"service": "all_services", "action": "HEALTHY", "reason": "All metrics within thresholds"}])
 
 
-def analyze_metrics(metrics: dict) -> list:
+async def analyze_metrics(metrics: dict) -> list:
     from utils.prompt_templates import build_analysis_prompt
-    raw = call_llm(build_analysis_prompt(metrics))
+    raw = await call_llm(build_analysis_prompt(metrics))
     return _parse(raw)
 
 
 def _parse(raw: str) -> list:
     try:
-        s = raw.find("["); e = raw.rfind("]") + 1
+        s = raw.find("[")
+        e = raw.rfind("]") + 1
         if s != -1 and e > s:
             decisions = json.loads(raw[s:e])
             validated = [

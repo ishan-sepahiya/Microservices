@@ -1,5 +1,7 @@
-import os, json, logging
-import requests
+import os
+import json
+import logging
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,9 +18,26 @@ def _send(url: str, payload: dict, label: str) -> dict:
         logger.info("[Webhook] %s not configured — simulating. payload=%s", label, json.dumps(payload))
         return {"status": "simulated", "label": label, "payload": payload}
     try:
+        # Note: This is a sync function. For async context, use _send_async instead.
+        import requests
         r = requests.post(url, json=payload, timeout=10)
         r.raise_for_status()
         return {"status": "success", "code": r.status_code, "body": r.text}
+    except Exception as e:
+        logger.error("[Webhook] %s error: %s", label, e)
+        return {"status": "error", "error": str(e)}
+
+
+async def _send_async(url: str, payload: dict, label: str) -> dict:
+    """Async version of _send for use in async contexts"""
+    if not url:
+        logger.info("[Webhook] %s not configured — simulating. payload=%s", label, json.dumps(payload))
+        return {"status": "simulated", "label": label, "payload": payload}
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post(url, json=payload)
+            r.raise_for_status()
+            return {"status": "success", "code": r.status_code, "body": r.text}
     except Exception as e:
         logger.error("[Webhook] %s error: %s", label, e)
         return {"status": "error", "error": str(e)}

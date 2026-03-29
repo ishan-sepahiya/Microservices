@@ -1,5 +1,10 @@
-import sys, os, json
-sys.path.insert(0, "/app")
+import os
+import json
+import sys
+from pathlib import Path
+
+# Add parent directories to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import streamlit as st
 from orchestrator.langgraph_flow import run_workflow

@@ -1,11 +1,12 @@
-import datetime, logging
+from datetime import datetime, timezone
+import logging
 from utils.webhook_client import trigger_restart_webhook, trigger_rollback_webhook
 
 logger = logging.getLogger("deployment_agent")
 _log = []
 
 def _record(service, action, result):
-    entry = {"timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+    entry = {"timestamp": datetime.now(timezone.utc).isoformat(),
              "service": service, "action": action, "result": result}
     _log.append(entry)
     logger.info("[DeploymentAgent] %s → %s | %s", action, service, result.get("status"))

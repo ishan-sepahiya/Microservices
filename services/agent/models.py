@@ -1,19 +1,20 @@
-<<<<<<< HEAD
 """
 models.py — Agent Service
 RegisteredService: every microservice the user plugs in
 AgentAction:       audit log of everything the agent does
 ServiceInstruction: versioned history of user instructions
 """
-import uuid, enum
+import uuid
+import enum
 from datetime import datetime, timezone
 from sqlalchemy import Boolean, DateTime, Enum, JSON, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from pydantic import BaseModel, Field
-from database import Base   # Base lives here — imported by alembic/env.py
+from database import Base
 
-def _utcnow(): return datetime.now(timezone.utc)
+def _utcnow():
+    return datetime.now(timezone.utc)
 
 class ServiceType(str, enum.Enum):
     REST      = "rest"
